@@ -1,0 +1,12 @@
+.dotnet/
+.cache/
+**/data/
+
+# .NET
+**/bin/
+**/obj/
+
+# Node
+**/node_modules/
+**/dist/
+

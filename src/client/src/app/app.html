@@ -1,0 +1,25 @@
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"></div>
+      <div class="title">{{ title }}</div>
+    </div>
+
+    <nav class="nav" aria-label="Primary">
+      <a routerLink="/clients" routerLinkActive="active" ariaCurrentWhenActive="page">Clients</a>
+      <a routerLink="/appointments" routerLinkActive="active" ariaCurrentWhenActive="page">Appointments</a>
+      <a routerLink="/audit" routerLinkActive="active" ariaCurrentWhenActive="page">Audit Log</a>
+    </nav>
+
+    <div class="hint">Backend: <code>http://localhost:5070</code></div>
+  </header>
+
+  <main class="content">
+    <router-outlet />
+  </main>
+
+  <footer class="footer">
+    Domain events -> audit. Integration events -> outbox -> worker.
+  </footer>
+</div>
+

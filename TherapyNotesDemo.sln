@@ -1,0 +1,44 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{75937DC7-90F1-4EC3-B7A6-3DD5DDE6E954}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "server", "server", "{3A1F9E07-70E9-4448-8DA2-2285E186B3BF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TherapyNotesDemo.Contracts", "src\server\TherapyNotesDemo.Contracts\TherapyNotesDemo.Contracts.csproj", "{60235FF7-D10D-4864-AB2D-65E916381D9A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TherapyNotesDemo.Scheduling.Api", "src\server\TherapyNotesDemo.Scheduling.Api\TherapyNotesDemo.Scheduling.Api.csproj", "{3E898620-76BE-4E3F-8C87-404E954ED164}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TherapyNotesDemo.Notifications.Worker", "src\server\TherapyNotesDemo.Notifications.Worker\TherapyNotesDemo.Notifications.Worker.csproj", "{9C371E36-B2F0-4D44-88A2-03BF8B5F5A94}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{60235FF7-D10D-4864-AB2D-65E916381D9A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{60235FF7-D10D-4864-AB2D-65E916381D9A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{60235FF7-D10D-4864-AB2D-65E916381D9A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{60235FF7-D10D-4864-AB2D-65E916381D9A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3E898620-76BE-4E3F-8C87-404E954ED164}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3E898620-76BE-4E3F-8C87-404E954ED164}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3E898620-76BE-4E3F-8C87-404E954ED164}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3E898620-76BE-4E3F-8C87-404E954ED164}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9C371E36-B2F0-4D44-88A2-03BF8B5F5A94}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9C371E36-B2F0-4D44-88A2-03BF8B5F5A94}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9C371E36-B2F0-4D44-88A2-03BF8B5F5A94}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9C371E36-B2F0-4D44-88A2-03BF8B5F5A94}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{3A1F9E07-70E9-4448-8DA2-2285E186B3BF} = {75937DC7-90F1-4EC3-B7A6-3DD5DDE6E954}
+		{60235FF7-D10D-4864-AB2D-65E916381D9A} = {3A1F9E07-70E9-4448-8DA2-2285E186B3BF}
+		{3E898620-76BE-4E3F-8C87-404E954ED164} = {3A1F9E07-70E9-4448-8DA2-2285E186B3BF}
+		{9C371E36-B2F0-4D44-88A2-03BF8B5F5A94} = {3A1F9E07-70E9-4448-8DA2-2285E186B3BF}
+	EndGlobalSection
+EndGlobal
