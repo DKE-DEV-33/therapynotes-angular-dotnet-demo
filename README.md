@@ -26,12 +26,12 @@ All data is fake demo data. No PHI.
    - Client default: `http://localhost:4200`
    - Uses `src/client/proxy.conf.json` to proxy `/api` to the backend.
 
-## What To Demo In An Interview
+## Suggested Walkthrough
 
 1. Create a client in `Clients`.
 2. Schedule an appointment in `Appointments`.
-3. Show `Audit Log` (domain event handler).
-4. Show the outbox being consumed by the worker (tail the `notifications.log` file).
+3. Open `Audit Log` to show the domain-event handler output.
+4. Tail `src/server/TherapyNotesDemo.Notifications.Worker/data/notifications.log` to show the worker consuming outbox messages.
 
 ## API Endpoints
 
