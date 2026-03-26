@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Appointment, Client } from '../../core/models';
 import { SchedulingApi } from '../../core/scheduling-api.service';
@@ -136,7 +136,16 @@ import { SchedulingApi } from '../../core/scheduling-api.service';
       .two {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 10px;
+        gap: 12px;
+      }
+      .two label {
+        min-width: 0;
+      }
+      .two input {
+        min-width: 0;
+      }
+      input[type='datetime-local'] {
+        letter-spacing: 0.2px;
       }
       button {
         padding: 10px 12px;
@@ -228,10 +237,6 @@ export class AppointmentsPage {
   protected startsAtLocal = '';
   protected durationMinutes = 50;
 
-  protected readonly canCreate = computed(() => {
-    return !this.busy() && this.clientId.trim().length > 0 && this.startsAtLocal.trim().length > 0;
-  });
-
   constructor() {
     void this.refresh();
   }
@@ -275,6 +280,10 @@ export class AppointmentsPage {
     return id.length > 8 ? id.slice(0, 8) : id;
   }
 
+  protected canCreate(): boolean {
+    return !this.busy() && this.clientId.trim().length > 0 && this.startsAtLocal.trim().length > 0;
+  }
+
   private localDateTimeToIso(local: string): string {
     // `datetime-local` returns no timezone; treat it as local time and convert to ISO with offset (UTC).
     // Example input: "2026-03-24T19:30"
@@ -282,4 +291,3 @@ export class AppointmentsPage {
     return d.toISOString();
   }
 }
-

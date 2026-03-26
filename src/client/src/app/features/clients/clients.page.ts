@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { SchedulingApi } from '../../core/scheduling-api.service';
 import { Client } from '../../core/models';
@@ -22,7 +22,7 @@ import { Client } from '../../core/models';
               <div class="label">Display name</div>
               <input [(ngModel)]="displayName" name="displayName" placeholder="e.g. Alex Morgan" />
             </label>
-            <button type="submit" [disabled]="busy()">Create</button>
+            <button type="submit" [disabled]="!canCreate()">Create</button>
             <div class="error" *ngIf="error()">{{ error() }}</div>
           </form>
         </div>
@@ -181,8 +181,6 @@ export class ClientsPage {
 
   protected displayName = '';
 
-  protected readonly canCreate = computed(() => this.displayName.trim().length > 0 && !this.busy());
-
   constructor() {
     void this.refresh();
   }
@@ -218,5 +216,8 @@ export class ClientsPage {
   protected shortId(id: string): string {
     return id.length > 8 ? id.slice(0, 8) : id;
   }
-}
 
+  protected canCreate(): boolean {
+    return this.displayName.trim().length > 0 && !this.busy();
+  }
+}

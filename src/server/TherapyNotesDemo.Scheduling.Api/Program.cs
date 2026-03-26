@@ -190,6 +190,26 @@ internalApi.MapPost("/outbox/complete", async (
     return Results.NoContent();
 });
 
+app.MapGet("/", () =>
+{
+    return Results.Ok(new
+    {
+        service = "TherapyNotesDemo.Scheduling.Api",
+        status = "ok",
+        endpoints = new[]
+        {
+            "GET /health",
+            "GET /api/clients",
+            "POST /api/clients",
+            "GET /api/appointments",
+            "POST /api/appointments",
+            "GET /api/audit",
+            "POST /internal/outbox/claim",
+            "POST /internal/outbox/complete"
+        }
+    });
+});
+
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 app.Run();
