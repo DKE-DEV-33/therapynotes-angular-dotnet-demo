@@ -49,13 +49,20 @@ public sealed class OutboxStore
 
         await using var tx = await _db.Database.BeginTransactionAsync(cancellationToken);
 
-        var rows = await _db.OutboxMessages
+        // EF Core's SQLite provider is picky about translating some DateTimeOffset comparisons.
+        // Pull a small candidate set from SQL, then do the "expired claim" comparison in-memory.
+        var candidates = await _db.OutboxMessages
+            .Where(m => m.Status == "Pending" || m.Status == "Claimed")
+            .OrderBy(m => m.OccurredAt)
+            .Take(max * 10)
+            .ToListAsync(cancellationToken);
+
+        var rows = candidates
             .Where(m =>
                 m.Status == "Pending" ||
-                (m.Status == "Claimed" && m.ClaimedUntil != null && m.ClaimedUntil <= now))
-            .OrderBy(m => m.OccurredAt)
+                (m.Status == "Claimed" && m.ClaimedUntil is not null && m.ClaimedUntil <= now))
             .Take(max)
-            .ToListAsync(cancellationToken);
+            .ToList();
 
         foreach (var row in rows)
         {
@@ -105,4 +112,3 @@ public sealed class OutboxStore
         await _db.SaveChangesAsync(cancellationToken);
     }
 }
-
