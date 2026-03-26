@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 
 namespace TherapyNotesDemo.Scheduling.Api.Infrastructure;
 
@@ -16,125 +17,92 @@ public sealed record ClaimedOutboxMessage(
 
 public sealed class OutboxStore
 {
-    private sealed record OutboxState(
-        Dictionary<Guid, OutboxStateEntry> Entries
-    );
+    private readonly SchedulingDbContext _db;
 
-    private sealed record OutboxStateEntry(
-        string Status,
-        DateTimeOffset? ClaimedUntil
-    );
-
-    private readonly string _messagesPath;
-    private readonly string _statePath;
-    private readonly SemaphoreSlim _gate = new(1, 1);
-
-    public OutboxStore(IWebHostEnvironment env)
+    public OutboxStore(SchedulingDbContext db)
     {
-        var root = Path.Combine(env.ContentRootPath, "data");
-        _messagesPath = Path.Combine(root, "outbox.jsonl");
-        _statePath = Path.Combine(root, "outbox-state.json");
+        _db = db;
     }
 
     public async Task EnqueueAsync(OutboxMessage message, CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken);
-        try
+        _db.OutboxMessages.Add(new OutboxMessageRow
         {
-            await JsonlFile.AppendAsync(_messagesPath, message, cancellationToken);
-            var state = await LoadStateAsync(cancellationToken);
-            state.Entries[message.Id] = new OutboxStateEntry("Pending", null);
-            await SaveStateAsync(state, cancellationToken);
-        }
-        finally
-        {
-            _gate.Release();
-        }
+            Id = message.Id,
+            OccurredAt = message.OccurredAt,
+            Type = message.Type,
+            DataJson = message.Data.GetRawText(),
+            Status = "Pending",
+            ClaimedUntil = null,
+            CompletedAt = null
+        });
+
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<ClaimedOutboxMessage>> ClaimAsync(int max, TimeSpan leaseTime, CancellationToken cancellationToken)
     {
         if (max <= 0) return Array.Empty<ClaimedOutboxMessage>();
 
-        await _gate.WaitAsync(cancellationToken);
-        try
+        var now = DateTimeOffset.UtcNow;
+        var claimedUntil = now.Add(leaseTime);
+
+        await using var tx = await _db.Database.BeginTransactionAsync(cancellationToken);
+
+        var rows = await _db.OutboxMessages
+            .Where(m =>
+                m.Status == "Pending" ||
+                (m.Status == "Claimed" && m.ClaimedUntil != null && m.ClaimedUntil <= now))
+            .OrderBy(m => m.OccurredAt)
+            .Take(max)
+            .ToListAsync(cancellationToken);
+
+        foreach (var row in rows)
         {
-            var now = DateTimeOffset.UtcNow;
-            var messages = await JsonlFile.ReadAllAsync<OutboxMessage>(_messagesPath, cancellationToken);
-            var state = await LoadStateAsync(cancellationToken);
-
-            // Release expired claims.
-            foreach (var (id, entry) in state.Entries.ToList())
-            {
-                if (entry.Status == "Claimed" && entry.ClaimedUntil is not null && entry.ClaimedUntil <= now)
-                {
-                    state.Entries[id] = new OutboxStateEntry("Pending", null);
-                }
-            }
-
-            var pending = messages
-                .Where(m => state.Entries.TryGetValue(m.Id, out var entry) && entry.Status == "Pending")
-                .OrderBy(m => m.OccurredAt)
-                .Take(max)
-                .ToList();
-
-            var claimedUntil = now.Add(leaseTime);
-            var claimed = new List<ClaimedOutboxMessage>(pending.Count);
-
-            foreach (var msg in pending)
-            {
-                state.Entries[msg.Id] = new OutboxStateEntry("Claimed", claimedUntil);
-                claimed.Add(new ClaimedOutboxMessage(msg, claimedUntil));
-            }
-
-            if (claimed.Count > 0)
-            {
-                await SaveStateAsync(state, cancellationToken);
-            }
-
-            return claimed;
+            row.Status = "Claimed";
+            row.ClaimedUntil = claimedUntil;
         }
-        finally
+
+        if (rows.Count > 0)
         {
-            _gate.Release();
+            await _db.SaveChangesAsync(cancellationToken);
+            await tx.CommitAsync(cancellationToken);
         }
+
+        var claimed = new List<ClaimedOutboxMessage>(rows.Count);
+        foreach (var row in rows)
+        {
+            var json = JsonDocument.Parse(row.DataJson);
+            var element = json.RootElement.Clone();
+            json.Dispose();
+
+            claimed.Add(new ClaimedOutboxMessage(
+                new OutboxMessage(row.Id, row.OccurredAt, row.Type, element),
+                claimedUntil));
+        }
+
+        return claimed;
     }
 
     public async Task CompleteAsync(IEnumerable<Guid> messageIds, CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            var state = await LoadStateAsync(cancellationToken);
-            foreach (var id in messageIds)
-            {
-                if (!state.Entries.ContainsKey(id)) continue;
-                state.Entries[id] = new OutboxStateEntry("Completed", null);
-            }
-            await SaveStateAsync(state, cancellationToken);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+        var ids = messageIds.Distinct().ToList();
+        if (ids.Count == 0) return;
 
-    private async Task<OutboxState> LoadStateAsync(CancellationToken cancellationToken)
-    {
-        if (!File.Exists(_statePath))
+        var now = DateTimeOffset.UtcNow;
+
+        var rows = await _db.OutboxMessages
+            .Where(m => ids.Contains(m.Id))
+            .ToListAsync(cancellationToken);
+
+        foreach (var row in rows)
         {
-            return new OutboxState(new Dictionary<Guid, OutboxStateEntry>());
+            row.Status = "Completed";
+            row.CompletedAt = now;
+            row.ClaimedUntil = null;
         }
 
-        var json = await File.ReadAllTextAsync(_statePath, cancellationToken);
-        return JsonSerializer.Deserialize<OutboxState>(json)!;
-    }
-
-    private async Task SaveStateAsync(OutboxState state, CancellationToken cancellationToken)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(_statePath)!);
-        var json = JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(_statePath, json, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
     }
 }
 

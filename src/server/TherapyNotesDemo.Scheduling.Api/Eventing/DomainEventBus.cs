@@ -30,16 +30,16 @@ public interface IDomainEventHandler
 public sealed class DomainEventDispatcherHostedService : BackgroundService
 {
     private readonly IDomainEventBus _bus;
-    private readonly IEnumerable<IDomainEventHandler> _handlers;
+    private readonly IServiceProvider _services;
     private readonly ILogger<DomainEventDispatcherHostedService> _logger;
 
     public DomainEventDispatcherHostedService(
         IDomainEventBus bus,
-        IEnumerable<IDomainEventHandler> handlers,
+        IServiceProvider services,
         ILogger<DomainEventDispatcherHostedService> logger)
     {
         _bus = bus;
-        _handlers = handlers;
+        _services = services;
         _logger = logger;
     }
 
@@ -47,7 +47,10 @@ public sealed class DomainEventDispatcherHostedService : BackgroundService
     {
         await foreach (var evt in _bus.ReadAllAsync(stoppingToken))
         {
-            foreach (var handler in _handlers)
+            using var scope = _services.CreateScope();
+            var handlers = scope.ServiceProvider.GetServices<IDomainEventHandler>();
+
+            foreach (var handler in handlers)
             {
                 if (!handler.CanHandle(evt.Type)) continue;
 
@@ -63,4 +66,3 @@ public sealed class DomainEventDispatcherHostedService : BackgroundService
         }
     }
 }
-

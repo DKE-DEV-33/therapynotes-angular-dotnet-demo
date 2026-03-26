@@ -8,17 +8,20 @@ public sealed class Worker : BackgroundService
 {
     private readonly SchedulingOutboxClient _outbox;
     private readonly NotificationLog _log;
+    private readonly IdempotencyStore _idempotency;
     private readonly IOptionsMonitor<SchedulingApiOptions> _options;
     private readonly ILogger<Worker> _logger;
 
     public Worker(
         SchedulingOutboxClient outbox,
         NotificationLog log,
+        IdempotencyStore idempotency,
         IOptionsMonitor<SchedulingApiOptions> options,
         ILogger<Worker> logger)
     {
         _outbox = outbox;
         _log = log;
+        _idempotency = idempotency;
         _options = options;
         _logger = logger;
     }
@@ -72,6 +75,12 @@ public sealed class Worker : BackgroundService
 
     private async Task<bool> HandleAsync(ClaimedOutboxMessageDto msg, CancellationToken cancellationToken)
     {
+        if (await _idempotency.IsProcessedAsync(msg.Id, cancellationToken))
+        {
+            _logger.LogInformation("Skipping already-processed message {EventType} ({EventId})", msg.Type, msg.Id);
+            return true;
+        }
+
         if (msg.Type == nameof(AppointmentScheduledIntegrationEvent))
         {
             var e = JsonSerializer.Deserialize<AppointmentScheduledIntegrationEvent>(msg.Data.GetRawText());
@@ -81,6 +90,7 @@ public sealed class Worker : BackgroundService
                 $"[Email] Appointment scheduled for client {e.ClientId} at {e.StartsAt:O} (duration {e.DurationMinutes}m)",
                 cancellationToken);
 
+            await _idempotency.MarkProcessedAsync(msg.Id, msg.Type, msg.OccurredAt, cancellationToken);
             _logger.LogInformation("Processed {EventType} ({EventId})", msg.Type, msg.Id);
             return true;
         }
@@ -94,11 +104,13 @@ public sealed class Worker : BackgroundService
                 $"[Email] Welcome email queued for new client {e.ClientDisplayName} ({e.ClientId})",
                 cancellationToken);
 
+            await _idempotency.MarkProcessedAsync(msg.Id, msg.Type, msg.OccurredAt, cancellationToken);
             _logger.LogInformation("Processed {EventType} ({EventId})", msg.Type, msg.Id);
             return true;
         }
 
         _logger.LogWarning("Skipping unknown event type: {EventType} ({EventId})", msg.Type, msg.Id);
+        await _idempotency.MarkProcessedAsync(msg.Id, msg.Type, msg.OccurredAt, cancellationToken);
         return true;
     }
 }

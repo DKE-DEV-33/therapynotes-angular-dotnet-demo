@@ -1,75 +1,99 @@
+using Microsoft.EntityFrameworkCore;
 using TherapyNotesDemo.Scheduling.Api.Domain;
 
 namespace TherapyNotesDemo.Scheduling.Api.Infrastructure;
 
 public sealed class ClientStore
 {
-    private readonly object _gate = new();
-    private readonly List<Client> _clients = new();
+    private readonly SchedulingDbContext _db;
 
-    public ClientStore()
+    public ClientStore(SchedulingDbContext db)
     {
+        _db = db;
+    }
+
+    public async Task<IReadOnlyList<Client>> GetAllAsync(CancellationToken cancellationToken)
+    {
+        return await _db.Clients
+            .OrderByDescending(c => c.CreatedAt)
+            .Select(c => new Client(c.Id, c.DisplayName, c.CreatedAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<Client> AddAsync(string displayName, CancellationToken cancellationToken)
+    {
+        var row = new ClientRow
+        {
+            Id = Guid.NewGuid(),
+            DisplayName = displayName.Trim(),
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        _db.Clients.Add(row);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return new Client(row.Id, row.DisplayName, row.CreatedAt);
+    }
+
+    public async Task<Client?> GetAsync(Guid clientId, CancellationToken cancellationToken)
+    {
+        var row = await _db.Clients.FirstOrDefaultAsync(c => c.Id == clientId, cancellationToken);
+        return row is null ? null : new Client(row.Id, row.DisplayName, row.CreatedAt);
+    }
+
+    public async Task EnsureSeededAsync(CancellationToken cancellationToken)
+    {
+        if (await _db.Clients.AnyAsync(cancellationToken))
+        {
+            return;
+        }
+
         var now = DateTimeOffset.UtcNow;
-        _clients.Add(new Client(Guid.NewGuid(), "Alex Morgan", now.AddMinutes(-30)));
-        _clients.Add(new Client(Guid.NewGuid(), "Taylor Kim", now.AddMinutes(-25)));
-        _clients.Add(new Client(Guid.NewGuid(), "Jordan Patel", now.AddMinutes(-20)));
-    }
+        _db.Clients.AddRange(
+            new ClientRow { Id = Guid.NewGuid(), DisplayName = "Alex Morgan", CreatedAt = now.AddMinutes(-30) },
+            new ClientRow { Id = Guid.NewGuid(), DisplayName = "Taylor Kim", CreatedAt = now.AddMinutes(-25) },
+            new ClientRow { Id = Guid.NewGuid(), DisplayName = "Jordan Patel", CreatedAt = now.AddMinutes(-20) }
+        );
 
-    public IReadOnlyList<Client> GetAll()
-    {
-        lock (_gate)
-        {
-            return _clients
-                .OrderByDescending(c => c.CreatedAt)
-                .ToList();
-        }
-    }
-
-    public Client Add(string displayName)
-    {
-        var client = new Client(Guid.NewGuid(), displayName.Trim(), DateTimeOffset.UtcNow);
-        lock (_gate)
-        {
-            _clients.Add(client);
-        }
-        return client;
-    }
-
-    public Client? Get(Guid clientId)
-    {
-        lock (_gate)
-        {
-            return _clients.FirstOrDefault(c => c.Id == clientId);
-        }
+        await _db.SaveChangesAsync(cancellationToken);
     }
 }
 
 public sealed class AppointmentStore
 {
-    private readonly object _gate = new();
-    private readonly List<Appointment> _appointments = new();
+    private readonly SchedulingDbContext _db;
 
-    public IReadOnlyList<Appointment> GetAll(DateTimeOffset? from = null, DateTimeOffset? to = null)
+    public AppointmentStore(SchedulingDbContext db)
     {
-        lock (_gate)
-        {
-            IEnumerable<Appointment> query = _appointments;
-            if (from is not null) query = query.Where(a => a.StartsAt >= from.Value);
-            if (to is not null) query = query.Where(a => a.StartsAt <= to.Value);
-            return query
-                .OrderBy(a => a.StartsAt)
-                .ToList();
-        }
+        _db = db;
     }
 
-    public Appointment Add(Guid clientId, DateTimeOffset startsAt, int durationMinutes)
+    public async Task<IReadOnlyList<Appointment>> GetAllAsync(DateTimeOffset? from, DateTimeOffset? to, CancellationToken cancellationToken)
     {
-        var appointment = new Appointment(Guid.NewGuid(), clientId, startsAt, durationMinutes, DateTimeOffset.UtcNow);
-        lock (_gate)
+        IQueryable<AppointmentRow> query = _db.Appointments;
+        if (from is not null) query = query.Where(a => a.StartsAt >= from.Value);
+        if (to is not null) query = query.Where(a => a.StartsAt <= to.Value);
+
+        return await query
+            .OrderBy(a => a.StartsAt)
+            .Select(a => new Appointment(a.Id, a.ClientId, a.StartsAt, a.DurationMinutes, a.CreatedAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<Appointment> AddAsync(Guid clientId, DateTimeOffset startsAt, int durationMinutes, CancellationToken cancellationToken)
+    {
+        var row = new AppointmentRow
         {
-            _appointments.Add(appointment);
-        }
-        return appointment;
+            Id = Guid.NewGuid(),
+            ClientId = clientId,
+            StartsAt = startsAt,
+            DurationMinutes = durationMinutes,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        _db.Appointments.Add(row);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return new Appointment(row.Id, row.ClientId, row.StartsAt, row.DurationMinutes, row.CreatedAt);
     }
 }
-

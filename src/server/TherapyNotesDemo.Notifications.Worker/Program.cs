@@ -6,6 +6,7 @@ builder.Services.Configure<SchedulingApiOptions>(builder.Configuration.GetSectio
 
 builder.Services.AddSingleton(new HttpClient());
 builder.Services.AddSingleton<SchedulingOutboxClient>();
+builder.Services.AddSingleton<IdempotencyStore>();
 builder.Services.AddSingleton<NotificationLog>();
 builder.Services.AddHostedService<Worker>();
 

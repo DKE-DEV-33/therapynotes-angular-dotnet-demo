@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.EntityFrameworkCore;
 using TherapyNotesDemo.Contracts;
 using TherapyNotesDemo.Scheduling.Api.Domain;
 using TherapyNotesDemo.Scheduling.Api.Eventing;
@@ -18,23 +19,45 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddSingleton<ClientStore>();
-builder.Services.AddSingleton<AppointmentStore>();
-builder.Services.AddSingleton<AuditLogStore>();
-builder.Services.AddSingleton<OutboxStore>();
+var dataDir = Path.Combine(builder.Environment.ContentRootPath, "data");
+Directory.CreateDirectory(dataDir);
+var dbPath = Path.Combine(dataDir, "scheduling.db");
+
+builder.Services.AddDbContext<SchedulingDbContext>(options =>
+{
+    options.UseSqlite($"Data Source={dbPath}");
+});
+
+builder.Services.AddScoped<ClientStore>();
+builder.Services.AddScoped<AppointmentStore>();
+builder.Services.AddScoped<AuditLogStore>();
+builder.Services.AddScoped<OutboxStore>();
 
 builder.Services.AddSingleton<IDomainEventBus, DomainEventBus>();
-builder.Services.AddSingleton<IDomainEventHandler, AuditLogDomainEventHandler>();
+builder.Services.AddScoped<IDomainEventHandler, AuditLogDomainEventHandler>();
 builder.Services.AddHostedService<DomainEventDispatcherHostedService>();
 
 var app = builder.Build();
+
+// Create database and seed demo data on startup.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<SchedulingDbContext>();
+    db.Database.EnsureCreated();
+
+    var clients = scope.ServiceProvider.GetRequiredService<ClientStore>();
+    clients.EnsureSeededAsync(CancellationToken.None).GetAwaiter().GetResult();
+}
 
 app.UseCors("client");
 app.UseHttpsRedirection();
 
 var api = app.MapGroup("/api");
 
-api.MapGet("/clients", (ClientStore clients) => Results.Ok(clients.GetAll()));
+api.MapGet("/clients", async (ClientStore clients, CancellationToken cancellationToken) =>
+{
+    return Results.Ok(await clients.GetAllAsync(cancellationToken));
+});
 
 api.MapPost("/clients", async Task<Results<Ok<Client>, BadRequest<string>>>(
     CreateClientRequest request,
@@ -48,7 +71,7 @@ api.MapPost("/clients", async Task<Results<Ok<Client>, BadRequest<string>>>(
         return TypedResults.BadRequest("DisplayName is required.");
     }
 
-    var client = clients.Add(request.DisplayName);
+    var client = await clients.AddAsync(request.DisplayName, cancellationToken);
 
     var domainEvent = new ClientCreatedDomainEvent(
         Guid.NewGuid(),
@@ -78,12 +101,13 @@ api.MapPost("/clients", async Task<Results<Ok<Client>, BadRequest<string>>>(
     return TypedResults.Ok(client);
 });
 
-api.MapGet("/appointments", (
+api.MapGet("/appointments", async (
     DateTimeOffset? from,
     DateTimeOffset? to,
-    AppointmentStore appointments) =>
+    AppointmentStore appointments,
+    CancellationToken cancellationToken) =>
 {
-    return Results.Ok(appointments.GetAll(from, to));
+    return Results.Ok(await appointments.GetAllAsync(from, to, cancellationToken));
 });
 
 api.MapPost("/appointments", async Task<Results<Ok<Appointment>, BadRequest<string>>>(
@@ -99,7 +123,7 @@ api.MapPost("/appointments", async Task<Results<Ok<Appointment>, BadRequest<stri
         return TypedResults.BadRequest("ClientId is required.");
     }
 
-    if (clients.Get(request.ClientId) is null)
+    if (await clients.GetAsync(request.ClientId, cancellationToken) is null)
     {
         return TypedResults.BadRequest("ClientId is unknown.");
     }
@@ -114,7 +138,7 @@ api.MapPost("/appointments", async Task<Results<Ok<Appointment>, BadRequest<stri
         return TypedResults.BadRequest("StartsAt is required.");
     }
 
-    var appointment = appointments.Add(request.ClientId, request.StartsAt, request.DurationMinutes);
+    var appointment = await appointments.AddAsync(request.ClientId, request.StartsAt, request.DurationMinutes, cancellationToken);
 
     var domainEvent = new AppointmentScheduledDomainEvent(
         Guid.NewGuid(),
