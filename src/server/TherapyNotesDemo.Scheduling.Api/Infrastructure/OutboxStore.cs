@@ -29,12 +29,12 @@ public sealed class OutboxStore
         _db.OutboxMessages.Add(new OutboxMessageRow
         {
             Id = message.Id,
-            OccurredAt = message.OccurredAt,
+            OccurredAtUtc = message.OccurredAt.UtcDateTime,
             Type = message.Type,
             DataJson = message.Data.GetRawText(),
             Status = "Pending",
-            ClaimedUntil = null,
-            CompletedAt = null
+            ClaimedUntilUtc = null,
+            CompletedAtUtc = null
         });
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -44,30 +44,23 @@ public sealed class OutboxStore
     {
         if (max <= 0) return Array.Empty<ClaimedOutboxMessage>();
 
-        var now = DateTimeOffset.UtcNow;
-        var claimedUntil = now.Add(leaseTime);
+        var nowUtc = DateTime.UtcNow;
+        var claimedUntilUtc = nowUtc.Add(leaseTime);
 
         await using var tx = await _db.Database.BeginTransactionAsync(cancellationToken);
 
-        // EF Core's SQLite provider is picky about translating some DateTimeOffset comparisons.
-        // Pull a small candidate set from SQL, then do the "expired claim" comparison in-memory.
-        var candidates = await _db.OutboxMessages
-            .Where(m => m.Status == "Pending" || m.Status == "Claimed")
-            .OrderBy(m => m.OccurredAt)
-            .Take(max * 10)
-            .ToListAsync(cancellationToken);
-
-        var rows = candidates
+        var rows = await _db.OutboxMessages
             .Where(m =>
                 m.Status == "Pending" ||
-                (m.Status == "Claimed" && m.ClaimedUntil is not null && m.ClaimedUntil <= now))
+                (m.Status == "Claimed" && m.ClaimedUntilUtc != null && m.ClaimedUntilUtc <= nowUtc))
+            .OrderBy(m => m.OccurredAtUtc)
             .Take(max)
-            .ToList();
+            .ToListAsync(cancellationToken);
 
         foreach (var row in rows)
         {
             row.Status = "Claimed";
-            row.ClaimedUntil = claimedUntil;
+            row.ClaimedUntilUtc = claimedUntilUtc;
         }
 
         if (rows.Count > 0)
@@ -84,8 +77,8 @@ public sealed class OutboxStore
             json.Dispose();
 
             claimed.Add(new ClaimedOutboxMessage(
-                new OutboxMessage(row.Id, row.OccurredAt, row.Type, element),
-                claimedUntil));
+                new OutboxMessage(row.Id, new DateTimeOffset(row.OccurredAtUtc, TimeSpan.Zero), row.Type, element),
+                new DateTimeOffset(claimedUntilUtc, TimeSpan.Zero)));
         }
 
         return claimed;
@@ -96,7 +89,7 @@ public sealed class OutboxStore
         var ids = messageIds.Distinct().ToList();
         if (ids.Count == 0) return;
 
-        var now = DateTimeOffset.UtcNow;
+        var nowUtc = DateTime.UtcNow;
 
         var rows = await _db.OutboxMessages
             .Where(m => ids.Contains(m.Id))
@@ -105,8 +98,8 @@ public sealed class OutboxStore
         foreach (var row in rows)
         {
             row.Status = "Completed";
-            row.CompletedAt = now;
-            row.ClaimedUntil = null;
+            row.CompletedAtUtc = nowUtc;
+            row.ClaimedUntilUtc = null;
         }
 
         await _db.SaveChangesAsync(cancellationToken);

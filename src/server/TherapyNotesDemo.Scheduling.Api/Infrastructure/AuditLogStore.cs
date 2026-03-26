@@ -17,7 +17,7 @@ public sealed class AuditLogStore
         _db.AuditEntries.Add(new AuditEntryRow
         {
             Id = entry.Id,
-            OccurredAt = entry.OccurredAt,
+            OccurredAtUtc = entry.OccurredAt.UtcDateTime,
             EventType = entry.EventType,
             Message = entry.Message
         });
@@ -28,9 +28,12 @@ public sealed class AuditLogStore
     public async Task<IReadOnlyList<AuditEntry>> GetAllAsync(CancellationToken cancellationToken)
     {
         return await _db.AuditEntries
-            .OrderByDescending(e => e.OccurredAt)
-            .Select(e => new AuditEntry(e.Id, e.OccurredAt, e.EventType, e.Message))
+            .OrderByDescending(e => e.OccurredAtUtc)
+            .Select(e => new AuditEntry(
+                e.Id,
+                new DateTimeOffset(DateTime.SpecifyKind(e.OccurredAtUtc, DateTimeKind.Utc)),
+                e.EventType,
+                e.Message))
             .ToListAsync(cancellationToken);
     }
 }
-

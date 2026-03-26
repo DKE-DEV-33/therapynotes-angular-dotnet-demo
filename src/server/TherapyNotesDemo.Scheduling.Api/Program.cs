@@ -43,7 +43,48 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<SchedulingDbContext>();
+    const int schemaVersion = 2;
+
+    // Simple demo-friendly schema versioning: if schema changes, recreate the DB.
+    // This keeps local setup smooth without migrations.
     db.Database.EnsureCreated();
+    var conn = db.Database.GetDbConnection();
+    conn.Open();
+    try
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "CREATE TABLE IF NOT EXISTS __schema (key TEXT PRIMARY KEY, value TEXT NOT NULL);";
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = "SELECT value FROM __schema WHERE key = 'version' LIMIT 1;";
+        var existing = cmd.ExecuteScalar() as string;
+        if (!int.TryParse(existing, out var existingVersion) || existingVersion != schemaVersion)
+        {
+            conn.Close();
+            db.Database.EnsureDeleted();
+            db.Database.EnsureCreated();
+
+            var conn2 = db.Database.GetDbConnection();
+            conn2.Open();
+            using var cmd2 = conn2.CreateCommand();
+            cmd2.CommandText = "CREATE TABLE IF NOT EXISTS __schema (key TEXT PRIMARY KEY, value TEXT NOT NULL);";
+            cmd2.ExecuteNonQuery();
+            cmd2.CommandText = "INSERT OR REPLACE INTO __schema (key, value) VALUES ('version', $v);";
+            var p = cmd2.CreateParameter();
+            p.ParameterName = "$v";
+            p.Value = schemaVersion.ToString();
+            cmd2.Parameters.Add(p);
+            cmd2.ExecuteNonQuery();
+            conn2.Close();
+        }
+    }
+    finally
+    {
+        if (conn.State == System.Data.ConnectionState.Open)
+        {
+            conn.Close();
+        }
+    }
 
     var clients = scope.ServiceProvider.GetRequiredService<ClientStore>();
     clients.EnsureSeededAsync(CancellationToken.None).GetAwaiter().GetResult();
