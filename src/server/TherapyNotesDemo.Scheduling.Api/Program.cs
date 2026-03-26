@@ -220,6 +220,22 @@ api.MapGet("/audit", async (AuditLogStore audit, CancellationToken cancellationT
 
 // Minimal outbox API for the worker service. In a real system this would be protected.
 var internalApi = app.MapGroup("/internal");
+internalApi.AddEndpointFilter(async (context, next) =>
+{
+    var configured = builder.Configuration["InternalApi:ApiKey"];
+    if (string.IsNullOrWhiteSpace(configured))
+    {
+        return Results.Problem("Internal API key is not configured.", statusCode: 500);
+    }
+
+    var provided = context.HttpContext.Request.Headers["X-Internal-Api-Key"].ToString();
+    if (!string.Equals(configured, provided, StringComparison.Ordinal))
+    {
+        return Results.Unauthorized();
+    }
+
+    return await next(context);
+});
 
 internalApi.MapPost("/outbox/claim", async (
     ClaimOutboxRequest request,

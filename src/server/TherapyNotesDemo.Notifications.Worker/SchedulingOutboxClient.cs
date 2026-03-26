@@ -15,6 +15,7 @@ public sealed record ClaimedOutboxMessageDto(
 public sealed class SchedulingApiOptions
 {
     public string BaseUrl { get; init; } = "http://localhost:5080";
+    public string ApiKey { get; init; } = "dev-worker-key";
     public int PollSeconds { get; init; } = 2;
     public int LeaseSeconds { get; init; } = 30;
     public int MaxBatchSize { get; init; } = 25;
@@ -36,10 +37,11 @@ public sealed class SchedulingOutboxClient
         var opts = _options.CurrentValue;
         var url = $"{opts.BaseUrl.TrimEnd('/')}/internal/outbox/claim";
 
-        using var resp = await _http.PostAsJsonAsync(
-            url,
-            new { Max = max, LeaseSeconds = leaseSeconds },
-            cancellationToken);
+        using var req = new HttpRequestMessage(HttpMethod.Post, url);
+        req.Headers.TryAddWithoutValidation("X-Internal-Api-Key", opts.ApiKey);
+        req.Content = JsonContent.Create(new { Max = max, LeaseSeconds = leaseSeconds });
+
+        using var resp = await _http.SendAsync(req, cancellationToken);
 
         resp.EnsureSuccessStatusCode();
 
@@ -54,8 +56,11 @@ public sealed class SchedulingOutboxClient
         var opts = _options.CurrentValue;
         var url = $"{opts.BaseUrl.TrimEnd('/')}/internal/outbox/complete";
 
-        using var resp = await _http.PostAsJsonAsync(url, new { MessageIds = ids }, cancellationToken);
+        using var req = new HttpRequestMessage(HttpMethod.Post, url);
+        req.Headers.TryAddWithoutValidation("X-Internal-Api-Key", opts.ApiKey);
+        req.Content = JsonContent.Create(new { MessageIds = ids });
+
+        using var resp = await _http.SendAsync(req, cancellationToken);
         resp.EnsureSuccessStatusCode();
     }
 }
-
