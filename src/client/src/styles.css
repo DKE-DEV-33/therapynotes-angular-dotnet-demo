@@ -16,6 +16,13 @@
     monospace;
 }
 
+/* Prevent `width: 100%` + padding from overflowing cards/grids */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 html,
 body {
   height: 100%;
